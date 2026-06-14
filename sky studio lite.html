@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>光遇音乐 | 15个半音阶</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: #000000;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            position: fixed;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: system-ui, 'Segoe UI', 'Helvetica Neue', sans-serif;
+        }
+
+        .piano-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000000;
+        }
+
+        .button-grid {
+            display: grid;
+            grid-template-rows: repeat(3, 1fr);
+            grid-template-columns: repeat(5, 1fr);
+            gap: 1.6vw;
+            width: 74vw;
+            max-width: 650px;
+            aspect-ratio: 5 / 3;
+            background: transparent;
+        }
+
+        .piano-btn {
+            background: #1e2a3a;
+            border: none;
+            border-radius: 16px;
+            color: #f0f0f0;
+            font-size: 1.6rem;
+            font-weight: 600;
+            font-family: 'Courier New', 'Noto Sans', monospace;
+            cursor: pointer;
+            transition: 0.03s linear;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            touch-action: manipulation;
+            outline: none;
+            box-shadow: none;
+            text-shadow: none;
+            line-height: 1;
+        }
+
+        .piano-btn:active {
+            background: #3a4e62;
+            transform: scale(0.95);
+        }
+
+        @media (orientation: landscape) and (max-width: 850px) {
+            .piano-btn {
+                font-size: 1.4rem;
+            }
+            .button-grid {
+                gap: 1.6vw;
+                width: 76vw;
+            }
+        }
+
+        @media (orientation: landscape) and (max-width: 650px) {
+            .piano-btn {
+                font-size: 1.2rem;
+            }
+            .button-grid {
+                gap: 1.4vw;
+                width: 78vw;
+            }
+        }
+
+        @media (orientation: landscape) and (max-width: 550px) {
+            .piano-btn {
+                font-size: 1rem;
+            }
+            .button-grid {
+                gap: 1.2vw;
+                width: 80vw;
+            }
+        }
+
+        @media (orientation: landscape) and (max-width: 450px) {
+            .piano-btn {
+                font-size: 0.85rem;
+            }
+            .button-grid {
+                gap: 1vw;
+                width: 82vw;
+            }
+        }
+
+        html, body {
+            overflow: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+</head>
+<body>
+<div class="piano-container">
+    <div class="button-grid" id="pianoGrid"></div>
+</div>
+
+<script>
+    (function() {
+        const BASE_FREQ = 261.625565;
+        const TOTAL_BUTTONS = 15;
+        const SEMITONE_RANGE = 24;
+        const STEP_SEMITONES = SEMITONE_RANGE / (TOTAL_BUTTONS - 1);
+        
+        const frequencies = [];
+        for (let i = 0; i < TOTAL_BUTTONS; i++) {
+            const semitoneOffset = i * STEP_SEMITONES;
+            const freq = BASE_FREQ * Math.pow(2, semitoneOffset / 12);
+            frequencies.push(freq);
+        }
+        
+        const simplifiedNotations = [
+            "1", "2", "3", "4", "5", "6", "7",
+            "1·", "2·", "3·", "4·", "5·", "6·", "7·", "1··"
+        ];
+        
+        let audioCtx = null;
+        
+        function initAudioContext() {
+            if (audioCtx) return audioCtx;
+            try {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                return audioCtx;
+            } catch(e) {
+                console.warn("Web Audio API 不支持", e);
+                return null;
+            }
+        }
+        
+        function playTone(frequency, duration = 0.55) {
+            if (!audioCtx) {
+                const ctx = initAudioContext();
+                if (!ctx) return;
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume().then(() => {
+                    playToneInternal(frequency, duration);
+                }).catch(e => console.log("音频恢复失败", e));
+            } else {
+                playToneInternal(frequency, duration);
+            }
+        }
+        
+        function playToneInternal(frequency, duration) {
+            if (!audioCtx) return;
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            
+            osc.type = 'sine';
+            osc.frequency.value = frequency;
+            
+            gain.gain.value = 0.25;
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.exponentialRampToValueAtTime(0.22, now + 0.008);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+            
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(now + duration);
+            
+            osc.onended = () => {
+                osc.disconnect();
+                gain.disconnect();
+            };
+        }
+        
+        const grid = document.getElementById('pianoGrid');
+        
+        for (let i = 0; i < TOTAL_BUTTONS; i++) {
+            const btn = document.createElement('button');
+            btn.className = 'piano-btn';
+            btn.textContent = simplifiedNotations[i];
+            btn.setAttribute('data-note-index', i+1);
+            btn.setAttribute('data-freq', frequencies[i]);
+            
+            const freqVal = frequencies[i];
+            const playHandler = (e) => {
+                e.preventDefault();
+                if (!audioCtx) {
+                    const ctx = initAudioContext();
+                    if (ctx && ctx.state === 'suspended') {
+                        ctx.resume().then(() => {
+                            playTone(freqVal, 0.6);
+                        }).catch(err => console.log);
+                    } else if (ctx && ctx.state === 'running') {
+                        playTone(freqVal, 0.6);
+                    } else if (ctx) {
+                        playTone(freqVal, 0.6);
+                    } else {
+                        console.log("不支持Web Audio");
+                    }
+                } else {
+                    if (audioCtx.state === 'suspended') {
+                        audioCtx.resume().then(() => {
+                            playTone(freqVal, 0.6);
+                        }).catch(e => {});
+                    } else {
+                        playTone(freqVal, 0.6);
+                    }
+                }
+            };
+            
+            btn.addEventListener('click', playHandler);
+            btn.addEventListener('touchstart', playHandler, { passive: false });
+            grid.appendChild(btn);
+        }
+        
+        function silentAudioUnlock() {
+            if (audioCtx && audioCtx.state === 'suspended') {
+                audioCtx.resume().catch(e=>{});
+            } else if (!audioCtx) {
+                const ctx = initAudioContext();
+                if (ctx && ctx.state === 'suspended') {
+                    ctx.resume().catch(e=>{});
+                }
+            }
+        }
+        
+        const unlockEvents = ['touchstart', 'touchend', 'click'];
+        function globalUnlockHandler() {
+            if (!audioCtx) {
+                const ctx = initAudioContext();
+                if (ctx && ctx.state === 'suspended') {
+                    ctx.resume().catch(()=>{});
+                }
+            } else if (audioCtx.state === 'suspended') {
+                audioCtx.resume().catch(()=>{});
+            }
+        }
+        unlockEvents.forEach(ev => {
+            window.addEventListener(ev, globalUnlockHandler, { once: false, passive: true });
+        });
+    })();
+</script>
+</body>
+</html>
